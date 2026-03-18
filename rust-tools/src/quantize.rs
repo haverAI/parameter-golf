@@ -88,9 +88,8 @@ fn quantize_int4(weights: &[f32]) -> (Vec<u8>, Vec<f32>) {
 }
 
 fn compress_zlib(data: &[u8]) -> Vec<u8> {
-    use std::io::Write;
     let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::best());
-    encoder.write_all(data).unwrap();
+    std::io::Write::write_all(&mut encoder, data).unwrap();
     encoder.finish().unwrap()
 }
 
@@ -126,22 +125,26 @@ fn main() {
             // Combine and compress
             let mut combined = quant_bytes;
             combined.extend_from_slice(&scale_bytes);
+            let uncompressed_size = combined.len();
+            let compressed = compress_zlib(&combined);
             
-            println!("Combined: {} bytes", combined.len());
+            println!("Combined (uncompressed): {} bytes", uncompressed_size);
+            println!("Combined (zlib):         {} bytes", compressed.len());
             
-            // Note: Would use flate2 crate for zlib, but keeping deps minimal
-            // For now, just report sizes
             println!("\n=== Size Analysis ===");
             println!("Original f32:     {} bytes", raw_bytes.len());
             println!("Int8 + scales:    {} bytes ({:.1}% of original)",
-                combined.len(),
-                combined.len() as f64 / raw_bytes.len() as f64 * 100.0);
+                uncompressed_size,
+                uncompressed_size as f64 / raw_bytes.len() as f64 * 100.0);
+            println!("Int8 + zlib:      {} bytes ({:.1}% of original)",
+                compressed.len(),
+                compressed.len() as f64 / raw_bytes.len() as f64 * 100.0);
             println!("Target:           {} bytes", args.target_bytes);
             println!("Fits in target:   {}",
-                if combined.len() <= args.target_bytes { "YES ✓" } else { "NO ✗" });
+                if compressed.len() <= args.target_bytes { "YES ✓" } else { "NO ✗" });
 
             if !args.analyze {
-                fs::write(&args.output, &combined).expect("Failed to write output");
+                fs::write(&args.output, &compressed).expect("Failed to write output");
                 println!("\nSaved to {:?}", args.output);
             }
         }
@@ -157,19 +160,25 @@ fn main() {
 
             let mut combined = packed;
             combined.extend_from_slice(&scale_bytes);
+            let uncompressed_size = combined.len();
+            let compressed = compress_zlib(&combined);
 
-            println!("Combined: {} bytes", combined.len());
+            println!("Combined (uncompressed): {} bytes", uncompressed_size);
+            println!("Combined (zlib):         {} bytes", compressed.len());
             println!("\n=== Size Analysis ===");
             println!("Original f32:     {} bytes", raw_bytes.len());
             println!("Int4 + scales:    {} bytes ({:.1}% of original)",
-                combined.len(),
-                combined.len() as f64 / raw_bytes.len() as f64 * 100.0);
+                uncompressed_size,
+                uncompressed_size as f64 / raw_bytes.len() as f64 * 100.0);
+            println!("Int4 + zlib:      {} bytes ({:.1}% of original)",
+                compressed.len(),
+                compressed.len() as f64 / raw_bytes.len() as f64 * 100.0);
             println!("Target:           {} bytes", args.target_bytes);
             println!("Fits in target:   {}",
-                if combined.len() <= args.target_bytes { "YES ✓" } else { "NO ✗" });
+                if compressed.len() <= args.target_bytes { "YES ✓" } else { "NO ✗" });
 
             if !args.analyze {
-                fs::write(&args.output, &combined).expect("Failed to write output");
+                fs::write(&args.output, &compressed).expect("Failed to write output");
                 println!("\nSaved to {:?}", args.output);
             }
         }

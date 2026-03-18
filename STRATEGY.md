@@ -103,6 +103,37 @@ The gap between 10min (1.2244) and 4hr (1.2074) is only 0.017 BPB. This means:
 - Can request $1000 advanced grant once near top of leaderboard
 - Local 2080 Ti for code prototyping (not for actual training)
 
+### Critical Insights (Updated Mar 18 evening)
+
+**Tokenizer constraint:** The eval script is HARDCODED to SentencePiece `.model` files.
+Our Rust BPE tokenizer outputs JSON — not directly compatible. To use a custom tokenizer:
+1. Must train a SentencePiece model (`sentencepiece.SentencePieceTrainer.train()`)
+2. Must retokenize the entire dataset into new `.bin` shards
+3. Must update `tokenizer_specs.json` and run `download_hf_docs_and_tokenize.py`
+
+**Tokenizer math:** Our Rust tokenizer showed:
+- 1024 vocab: 2.52 bytes/token
+- 2048 vocab: 3.01 bytes/token (+19.4%)
+- 4096 vocab: 3.54 bytes/token (+40.5%)
+
+But bigger vocab = bigger embedding table = more params. Trade-off:
+- 1024 vocab × 512 dim = 524K embedding params
+- 2048 vocab × 512 dim = 1.05M embedding params (+524K)
+- 4096 vocab × 512 dim = 2.10M embedding params (+1.57M)
+
+With tied embeddings, the extra params go into better compression.
+**4096 vocab might NOT help** because the extra embedding params eat budget that could go to deeper/wider layers.
+**2048 vocab is the sweet spot** — modest param increase for 19% better compression.
+
+**SentencePiece tokenizer training script created:** `data/train_sp_tokenizer.py`
+Ready to train on H100s once we download the raw docs.
+
+**Everyone is doing the same thing.** All 13 PRs converge on depth recurrence + SwiGLU + QAT.
+Our edge must come from:
+1. Better hyperparameter tuning (more systematic sweeps)
+2. Custom tokenizer (unique approach)
+3. Combination of multiple improvements that interact well
+
 ### Key Numbers to Track
 - **Baseline BPB:** 1.2244
 - **Target BPB:** <1.20 (competitive), <1.18 (exceptional)
