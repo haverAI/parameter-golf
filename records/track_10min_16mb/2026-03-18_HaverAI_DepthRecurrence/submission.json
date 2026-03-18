@@ -1,0 +1,11 @@
+{
+  "author": "Will Haver",
+  "github_id": "haverAI",
+  "name": "Depth Recurrence 7x2",
+  "blurb": "7 physical transformer layers looped 2x = 14 effective depth (vs baseline 9). Same dim=512, 8 heads, 4 KV heads, tied embeddings. U-Net skip connections per pass. ~99% of 16MB budget.",
+  "date": "",
+  "val_loss": null,
+  "val_bpb": null,
+  "bytes_total": null,
+  "bytes_code": null
+}
