@@ -49,6 +49,18 @@ ARCH_CONFIGS = [
     # MLP multiplier variants
     {"name": "9x1_512_mlp3", "NUM_LAYERS": 9, "MODEL_DIM": 512, "NUM_HEADS": 8, "NUM_KV_HEADS": 4, "NUM_RECURRENCE": 1, "MLP_MULT": 3},
     {"name": "6x2_512_mlp3", "NUM_LAYERS": 6, "MODEL_DIM": 512, "NUM_HEADS": 8, "NUM_KV_HEADS": 4, "NUM_RECURRENCE": 2, "MLP_MULT": 3},
+    # SwiGLU variants (3 matrices instead of 2, but 2/3 hidden for same param count)
+    {"name": "7x2_swiglu", "NUM_LAYERS": 7, "MODEL_DIM": 512, "NUM_HEADS": 8, "NUM_KV_HEADS": 4, "NUM_RECURRENCE": 2, "USE_SWIGLU": 1},
+    {"name": "8x2_swiglu", "NUM_LAYERS": 8, "MODEL_DIM": 512, "NUM_HEADS": 8, "NUM_KV_HEADS": 4, "NUM_RECURRENCE": 2, "USE_SWIGLU": 1},
+    {"name": "baseline_swiglu", "NUM_LAYERS": 9, "MODEL_DIM": 512, "NUM_HEADS": 8, "NUM_KV_HEADS": 4, "NUM_RECURRENCE": 1, "USE_SWIGLU": 1},
+]
+
+# QAT sweep (run after finding best architecture)
+QAT_CONFIGS = [
+    {"name": "qat_off", "QAT_START_FRAC": 0.0},
+    {"name": "qat_50", "QAT_START_FRAC": 0.5},
+    {"name": "qat_60", "QAT_START_FRAC": 0.6},
+    {"name": "qat_70", "QAT_START_FRAC": 0.7},
 ]
 
 # TIER 2: Learning rates (Muon + Adam)

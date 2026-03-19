@@ -70,6 +70,8 @@ class Hyperparameters:
     tie_embeddings = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
     rope_base = float(os.environ.get("ROPE_BASE", 10000.0))
     logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 30.0))
+    use_swiglu = bool(int(os.environ.get("USE_SWIGLU", "0")))  # 0=relu^2, 1=SwiGLU
+    qat_start_frac = float(os.environ.get("QAT_START_FRAC", 0.0))  # 0=disabled, 0.5=start QAT noise at 50%
 
     # Optimizer hyperparameters.
     embed_lr = float(os.environ.get("EMBED_LR", 0.6))
@@ -618,6 +620,28 @@ class MLP(nn.Module):
         return self.proj(x.square())
 
 
+class SwiGLUMLP(nn.Module):
+    """SwiGLU MLP as used in LLaMA/modern architectures.
+    Uses gate + value projections with SiLU activation.
+    More params per layer but better quality per parameter.
+    """
+    def __init__(self, dim: int, mlp_mult: int):
+        super().__init__()
+        # SwiGLU hidden size: to keep param count comparable,
+        # use 2/3 * mlp_mult * dim for each of gate and value
+        # (since we have 3 matrices instead of 2)
+        hidden = int(2 * mlp_mult * dim / 3)
+        # Round to nearest multiple of 64 for efficiency
+        hidden = ((hidden + 63) // 64) * 64
+        self.gate = CastedLinear(dim, hidden, bias=False)
+        self.value = CastedLinear(dim, hidden, bias=False)
+        self.proj = CastedLinear(hidden, dim, bias=False)
+        self.proj._zero_init = True
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.proj(F.silu(self.gate(x)) * self.value(x))
+
+
 class Block(nn.Module):
     def __init__(
         self,
@@ -627,12 +651,13 @@ class Block(nn.Module):
         mlp_mult: int,
         rope_base: float,
         qk_gain_init: float,
+        use_swiglu: bool = False,
     ):
         super().__init__()
         self.attn_norm = RMSNorm()
         self.mlp_norm = RMSNorm()
         self.attn = CausalSelfAttention(dim, num_heads, num_kv_heads, rope_base, qk_gain_init)
-        self.mlp = MLP(dim, mlp_mult)
+        self.mlp = SwiGLUMLP(dim, mlp_mult) if use_swiglu else MLP(dim, mlp_mult)
         self.attn_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.mlp_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.resid_mix = nn.Parameter(torch.stack((torch.ones(dim), torch.zeros(dim))).float())
@@ -661,6 +686,7 @@ class GPT(nn.Module):
         rope_base: float,
         qk_gain_init: float,
         num_recurrence: int = 1,
+        use_swiglu: bool = False,
     ):
         super().__init__()
         if logit_softcap <= 0.0:
@@ -685,6 +711,7 @@ class GPT(nn.Module):
                     mlp_mult,
                     rope_base,
                     qk_gain_init,
+                    use_swiglu=use_swiglu,
                 )
                 for i in range(num_layers)
             ]
@@ -843,6 +870,7 @@ def main() -> None:
         rope_base=args.rope_base,
         qk_gain_init=args.qk_gain_init,
         num_recurrence=args.num_recurrence,
+        use_swiglu=args.use_swiglu,
     ).to(device).bfloat16()
     for module in base_model.modules():
         if isinstance(module, CastedLinear):
@@ -972,6 +1000,23 @@ def main() -> None:
     # MAIN TRAINING LOOP
     # -----------------------------
 
+    # QAT noise injection: simulate int8 quantization error during training
+    # This helps the model learn to be robust to quantization
+    def maybe_inject_qat_noise(model, step, elapsed_frac):
+        """Add simulated int8 quantization noise to model weights."""
+        if args.qat_start_frac <= 0 or elapsed_frac < args.qat_start_frac:
+            return
+        with torch.no_grad():
+            for p in model.parameters():
+                if p.ndim >= 2:  # Only quantize matrix params
+                    # Simulate int8: scale to [-127, 127] range, round, scale back
+                    scale = p.abs().max() / 127.0
+                    if scale > 0:
+                        noise = (p / scale).round() * scale - p
+                        # Gradually increase noise strength as training progresses
+                        noise_strength = min((elapsed_frac - args.qat_start_frac) / (1.0 - args.qat_start_frac), 1.0)
+                        p.add_(noise * noise_strength * 0.5)  # 50% noise to avoid instability
+
     training_time_ms = 0.0
     stop_after_step: int | None = None
     torch.cuda.synchronize()
@@ -1013,7 +1058,10 @@ def main() -> None:
             break
 
         elapsed_ms = training_time_ms + 1000.0 * (time.perf_counter() - t0)
+        elapsed_frac = elapsed_ms / max_wallclock_ms if max_wallclock_ms else step / args.iterations
         scale = lr_mul(step, elapsed_ms)
+        # QAT noise injection in later stages of training
+        maybe_inject_qat_noise(base_model, step, elapsed_frac)
         zero_grad_all()
         train_loss = torch.zeros((), device=device)
         for micro_step in range(grad_accum_steps):
