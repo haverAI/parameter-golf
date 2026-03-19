@@ -72,6 +72,9 @@ class Hyperparameters:
     logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 30.0))
     use_swiglu = bool(int(os.environ.get("USE_SWIGLU", "0")))  # 0=relu^2, 1=SwiGLU
     qat_start_frac = float(os.environ.get("QAT_START_FRAC", 0.0))  # 0=disabled, 0.5=start QAT noise at 50%
+    mtp_heads = int(os.environ.get("MTP_HEADS", 0))  # 0=disabled, 2-4 = multi-token prediction auxiliary heads
+    mtp_weight = float(os.environ.get("MTP_WEIGHT", 0.1))  # Weight of auxiliary MTP loss
+    batch_ramp_frac = float(os.environ.get("BATCH_RAMP_FRAC", 0.0))  # 0=disabled, 0.3=ramp batch from 25% to 100% over first 30%
 
     # Optimizer hyperparameters.
     embed_lr = float(os.environ.get("EMBED_LR", 0.6))
@@ -687,6 +690,7 @@ class GPT(nn.Module):
         qk_gain_init: float,
         num_recurrence: int = 1,
         use_swiglu: bool = False,
+        mtp_heads: int = 0,
     ):
         super().__init__()
         if logit_softcap <= 0.0:
@@ -695,6 +699,8 @@ class GPT(nn.Module):
         self.tied_embed_init_std = tied_embed_init_std
         self.logit_softcap = logit_softcap
         self.num_recurrence = num_recurrence
+        self.mtp_heads = mtp_heads
+        self.mtp_weight_val = 0.1  # Set from args later
         self.tok_emb = nn.Embedding(vocab_size, model_dim)
         # With depth recurrence, effective_layers = num_layers * num_recurrence
         # U-Net skip connections span one pass of the physical layers
@@ -720,6 +726,17 @@ class GPT(nn.Module):
         self.lm_head = None if tie_embeddings else CastedLinear(model_dim, vocab_size, bias=False)
         if self.lm_head is not None:
             self.lm_head._zero_init = True
+        # Multi-token prediction: auxiliary heads for predicting +2, +3, ... tokens ahead
+        # These are TRAINING-ONLY and excluded from the final artifact
+        if mtp_heads > 0:
+            self.mtp_projs = nn.ModuleList([
+                CastedLinear(model_dim, vocab_size, bias=False) for _ in range(mtp_heads)
+            ])
+            for proj in self.mtp_projs:
+                proj._zero_init = True
+                proj._mtp_auxiliary = True  # Mark for exclusion from serialization
+        else:
+            self.mtp_projs = None
         self._init_weights()
 
     def _init_weights(self) -> None:
@@ -746,16 +763,37 @@ class GPT(nn.Module):
                     x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
                 x = self.blocks[self.num_encoder_layers + i](x, x0)
 
-        x = self.final_norm(x).reshape(-1, x.size(-1))
+        x_final = self.final_norm(x)
+        x_flat = x_final.reshape(-1, x_final.size(-1))
         targets = target_ids.reshape(-1)
         if self.tie_embeddings:
-            logits_proj = F.linear(x, self.tok_emb.weight)
+            logits_proj = F.linear(x_flat, self.tok_emb.weight)
         else:
             if self.lm_head is None:
                 raise RuntimeError("lm_head is required when tie_embeddings=False")
-            logits_proj = self.lm_head(x)
+            logits_proj = self.lm_head(x_flat)
         logits = self.logit_softcap * torch.tanh(logits_proj / self.logit_softcap)
-        return F.cross_entropy(logits.float(), targets, reduction="mean")
+        main_loss = F.cross_entropy(logits.float(), targets, reduction="mean")
+
+        # Multi-token prediction auxiliary losses (training only)
+        if self.mtp_projs is not None and self.training:
+            mtp_loss = torch.zeros((), device=main_loss.device)
+            seq_len = x_final.size(1)
+            batch_size = x_final.size(0)
+            for k, proj in enumerate(self.mtp_projs):
+                offset = k + 2  # predict +2, +3, etc.
+                if seq_len <= offset:
+                    continue
+                # Hidden states predict tokens `offset` positions ahead
+                h = x_final[:, :seq_len - offset, :].reshape(-1, x_final.size(-1))
+                t = target_ids[:, offset - 1:seq_len - 1].reshape(-1)
+                aux_logits = proj(h)
+                aux_logits = self.logit_softcap * torch.tanh(aux_logits / self.logit_softcap)
+                mtp_loss = mtp_loss + F.cross_entropy(aux_logits.float(), t, reduction="mean")
+            mtp_loss = mtp_loss / max(len(self.mtp_projs), 1)
+            return main_loss + self.mtp_weight_val * mtp_loss
+
+        return main_loss
 
 
 # -----------------------------
@@ -871,7 +909,9 @@ def main() -> None:
         qk_gain_init=args.qk_gain_init,
         num_recurrence=args.num_recurrence,
         use_swiglu=args.use_swiglu,
+        mtp_heads=args.mtp_heads,
     ).to(device).bfloat16()
+    base_model.mtp_weight_val = args.mtp_weight
     for module in base_model.modules():
         if isinstance(module, CastedLinear):
             module.float()
@@ -1062,12 +1102,20 @@ def main() -> None:
         scale = lr_mul(step, elapsed_ms)
         # QAT noise injection in later stages of training
         maybe_inject_qat_noise(base_model, step, elapsed_frac)
+        # Batch size ramp: start at 25% of full batch, linearly increase to 100%
+        if args.batch_ramp_frac > 0 and elapsed_frac < args.batch_ramp_frac:
+            ramp = 0.25 + 0.75 * (elapsed_frac / args.batch_ramp_frac)
+            effective_batch = max(int(args.train_batch_tokens * ramp), args.train_seq_len * world_size)
+            # Round to multiple of seq_len * world_size
+            effective_batch = (effective_batch // (args.train_seq_len * world_size)) * args.train_seq_len * world_size
+        else:
+            effective_batch = args.train_batch_tokens
         zero_grad_all()
         train_loss = torch.zeros((), device=device)
         for micro_step in range(grad_accum_steps):
             if distributed:
                 model.require_backward_grad_sync = micro_step == grad_accum_steps - 1
-            x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, grad_accum_steps)
+            x, y = train_loader.next_batch(effective_batch, args.train_seq_len, grad_accum_steps)
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
                 loss = model(x, y)
             train_loss += loss.detach()
@@ -1129,7 +1177,12 @@ def main() -> None:
         log0(f"Code size: {code_bytes} bytes")
         log0(f"Total submission size: {model_bytes + code_bytes} bytes")
 
-    quant_obj, quant_stats = quantize_state_dict_int8(base_model.state_dict())
+    # Filter out MTP auxiliary heads — they're training-only and don't count toward 16MB
+    serializable_state = {
+        k: v for k, v in base_model.state_dict().items()
+        if "mtp_projs" not in k
+    }
+    quant_obj, quant_stats = quantize_state_dict_int8(serializable_state)
     quant_buf = io.BytesIO()
     torch.save(quant_obj, quant_buf)
     quant_raw = quant_buf.getvalue()
@@ -1152,7 +1205,8 @@ def main() -> None:
     with open("final_model.int8.ptz", "rb") as f:
         quant_blob_disk = f.read()
     quant_state = torch.load(io.BytesIO(zlib.decompress(quant_blob_disk)), map_location="cpu")
-    base_model.load_state_dict(dequantize_state_dict_int8(quant_state), strict=True)
+    # strict=False because MTP auxiliary heads are excluded from the artifact
+    base_model.load_state_dict(dequantize_state_dict_int8(quant_state), strict=False)
     torch.cuda.synchronize()
     t_qeval = time.perf_counter()
     q_val_loss, q_val_bpb = eval_val(
