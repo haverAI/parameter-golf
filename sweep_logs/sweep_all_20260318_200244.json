@@ -1,0 +1,212 @@
+[
+  {
+    "run_name": "baseline_lr_base",
+    "status": "dry_run",
+    "config": {
+      "name": "other_base",
+      "NUM_LAYERS": 9,
+      "MODEL_DIM": 512,
+      "NUM_HEADS": 8,
+      "NUM_KV_HEADS": 4,
+      "NUM_RECURRENCE": 1,
+      "MATRIX_LR": 0.04,
+      "EMBED_LR": 0.6,
+      "TIED_EMBED_LR": 0.05,
+      "WARMUP_STEPS": 20,
+      "WARMDOWN_ITERS": 1200,
+      "MUON_MOMENTUM": 0.95,
+      "LOGIT_SOFTCAP": 30.0,
+      "QK_GAIN_INIT": 1.5,
+      "ROPE_BASE": 10000.0
+    }
+  },
+  {
+    "run_name": "baseline_lr_high",
+    "status": "dry_run",
+    "config": {
+      "name": "other_base",
+      "NUM_LAYERS": 9,
+      "MODEL_DIM": 512,
+      "NUM_HEADS": 8,
+      "NUM_KV_HEADS": 4,
+      "NUM_RECURRENCE": 1,
+      "MATRIX_LR": 0.06,
+      "EMBED_LR": 0.8,
+      "TIED_EMBED_LR": 0.07,
+      "WARMUP_STEPS": 20,
+      "WARMDOWN_ITERS": 1200,
+      "MUON_MOMENTUM": 0.95,
+      "LOGIT_SOFTCAP": 30.0,
+      "QK_GAIN_INIT": 1.5,
+      "ROPE_BASE": 10000.0
+    }
+  },
+  {
+    "run_name": "7x2_lr_base",
+    "status": "dry_run",
+    "config": {
+      "name": "other_base",
+      "NUM_LAYERS": 7,
+      "MODEL_DIM": 512,
+      "NUM_HEADS": 8,
+      "NUM_KV_HEADS": 4,
+      "NUM_RECURRENCE": 2,
+      "MATRIX_LR": 0.04,
+      "EMBED_LR": 0.6,
+      "TIED_EMBED_LR": 0.05,
+      "WARMUP_STEPS": 20,
+      "WARMDOWN_ITERS": 1200,
+      "MUON_MOMENTUM": 0.95,
+      "LOGIT_SOFTCAP": 30.0,
+      "QK_GAIN_INIT": 1.5,
+      "ROPE_BASE": 10000.0
+    }
+  },
+  {
+    "run_name": "7x2_lr_high",
+    "status": "dry_run",
+    "config": {
+      "name": "other_base",
+      "NUM_LAYERS": 7,
+      "MODEL_DIM": 512,
+      "NUM_HEADS": 8,
+      "NUM_KV_HEADS": 4,
+      "NUM_RECURRENCE": 2,
+      "MATRIX_LR": 0.06,
+      "EMBED_LR": 0.8,
+      "TIED_EMBED_LR": 0.07,
+      "WARMUP_STEPS": 20,
+      "WARMDOWN_ITERS": 1200,
+      "MUON_MOMENTUM": 0.95,
+      "LOGIT_SOFTCAP": 30.0,
+      "QK_GAIN_INIT": 1.5,
+      "ROPE_BASE": 10000.0
+    }
+  },
+  {
+    "run_name": "6x3_lr_base",
+    "status": "dry_run",
+    "config": {
+      "name": "other_base",
+      "NUM_LAYERS": 6,
+      "MODEL_DIM": 512,
+      "NUM_HEADS": 8,
+      "NUM_KV_HEADS": 4,
+      "NUM_RECURRENCE": 3,
+      "MATRIX_LR": 0.04,
+      "EMBED_LR": 0.6,
+      "TIED_EMBED_LR": 0.05,
+      "WARMUP_STEPS": 20,
+      "WARMDOWN_ITERS": 1200,
+      "MUON_MOMENTUM": 0.95,
+      "LOGIT_SOFTCAP": 30.0,
+      "QK_GAIN_INIT": 1.5,
+      "ROPE_BASE": 10000.0
+    }
+  },
+  {
+    "run_name": "6x3_lr_high",
+    "status": "dry_run",
+    "config": {
+      "name": "other_base",
+      "NUM_LAYERS": 6,
+      "MODEL_DIM": 512,
+      "NUM_HEADS": 8,
+      "NUM_KV_HEADS": 4,
+      "NUM_RECURRENCE": 3,
+      "MATRIX_LR": 0.06,
+      "EMBED_LR": 0.8,
+      "TIED_EMBED_LR": 0.07,
+      "WARMUP_STEPS": 20,
+      "WARMDOWN_ITERS": 1200,
+      "MUON_MOMENTUM": 0.95,
+      "LOGIT_SOFTCAP": 30.0,
+      "QK_GAIN_INIT": 1.5,
+      "ROPE_BASE": 10000.0
+    }
+  },
+  {
+    "run_name": "5x3_lr_base",
+    "status": "dry_run",
+    "config": {
+      "name": "other_base",
+      "NUM_LAYERS": 5,
+      "MODEL_DIM": 576,
+      "NUM_HEADS": 8,
+      "NUM_KV_HEADS": 4,
+      "NUM_RECURRENCE": 3,
+      "MATRIX_LR": 0.04,
+      "EMBED_LR": 0.6,
+      "TIED_EMBED_LR": 0.05,
+      "WARMUP_STEPS": 20,
+      "WARMDOWN_ITERS": 1200,
+      "MUON_MOMENTUM": 0.95,
+      "LOGIT_SOFTCAP": 30.0,
+      "QK_GAIN_INIT": 1.5,
+      "ROPE_BASE": 10000.0
+    }
+  },
+  {
+    "run_name": "5x3_lr_high",
+    "status": "dry_run",
+    "config": {
+      "name": "other_base",
+      "NUM_LAYERS": 5,
+      "MODEL_DIM": 576,
+      "NUM_HEADS": 8,
+      "NUM_KV_HEADS": 4,
+      "NUM_RECURRENCE": 3,
+      "MATRIX_LR": 0.06,
+      "EMBED_LR": 0.8,
+      "TIED_EMBED_LR": 0.07,
+      "WARMUP_STEPS": 20,
+      "WARMDOWN_ITERS": 1200,
+      "MUON_MOMENTUM": 0.95,
+      "LOGIT_SOFTCAP": 30.0,
+      "QK_GAIN_INIT": 1.5,
+      "ROPE_BASE": 10000.0
+    }
+  },
+  {
+    "run_name": "4x4_lr_base",
+    "status": "dry_run",
+    "config": {
+      "name": "other_base",
+      "NUM_LAYERS": 4,
+      "MODEL_DIM": 640,
+      "NUM_HEADS": 8,
+      "NUM_KV_HEADS": 4,
+      "NUM_RECURRENCE": 4,
+      "MATRIX_LR": 0.04,
+      "EMBED_LR": 0.6,
+      "TIED_EMBED_LR": 0.05,
+      "WARMUP_STEPS": 20,
+      "WARMDOWN_ITERS": 1200,
+      "MUON_MOMENTUM": 0.95,
+      "LOGIT_SOFTCAP": 30.0,
+      "QK_GAIN_INIT": 1.5,
+      "ROPE_BASE": 10000.0
+    }
+  },
+  {
+    "run_name": "4x4_lr_high",
+    "status": "dry_run",
+    "config": {
+      "name": "other_base",
+      "NUM_LAYERS": 4,
+      "MODEL_DIM": 640,
+      "NUM_HEADS": 8,
+      "NUM_KV_HEADS": 4,
+      "NUM_RECURRENCE": 4,
+      "MATRIX_LR": 0.06,
+      "EMBED_LR": 0.8,
+      "TIED_EMBED_LR": 0.07,
+      "WARMUP_STEPS": 20,
+      "WARMDOWN_ITERS": 1200,
+      "MUON_MOMENTUM": 0.95,
+      "LOGIT_SOFTCAP": 30.0,
+      "QK_GAIN_INIT": 1.5,
+      "ROPE_BASE": 10000.0
+    }
+  }
+]
