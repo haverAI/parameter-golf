@@ -134,6 +134,17 @@ Our edge must come from:
 2. Custom tokenizer (unique approach)
 3. Combination of multiple improvements that interact well
 
+### Eval-Time Tricks (Free Wins)
+
+**Longer eval sequence length:**
+The rules explicitly allow evaluation at any sequence length. Training at 1024, but evaluating at 2048 or 4096 gives the model MORE context per prediction → lower BPB. RoPE is dynamic, so no architecture changes needed. Just set `TRAIN_SEQ_LEN=2048` (or larger) during the final eval pass.
+
+**Sliding window evaluation:**
+Instead of processing sequences independently, use overlapping windows so every position has maximum context. The HuggingFace docs confirm this gives lower (better) PPL.
+
+**Depth recurrence at eval time:**
+If using depth recurrence (e.g., 7×2), could try 7×3 or 7×4 at eval time. More iterations through the same weights = potentially better predictions. This is "test-time compute" which the rules explicitly encourage.
+
 ### Key Numbers to Track
 - **Baseline BPB:** 1.2244
 - **Target BPB:** <1.20 (competitive), <1.18 (exceptional)
